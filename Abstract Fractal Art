@@ -1,0 +1,113 @@
+#include <Adafruit_GFX.h>
+#include <Adafruit_TFTLCD.h>
+
+#define LCD_CS A3
+#define LCD_CD A2
+#define LCD_WR A1
+#define LCD_RD A0
+#define LCD_RESET A4
+
+#define BLACK   0x0000
+#define WHITE   0xFFFF
+
+Adafruit_TFTLCD tft(LCD_CS, LCD_CD, LCD_WR, LCD_RD, LCD_RESET);
+
+int minDepth;  // Minimum depth for the fractal
+int maxDepth;  // Maximum depth for the fractal
+int initialLength;  // Initial length of the snowflake
+
+void setup() {
+  Serial.begin(9600);
+  tft.reset();
+  tft.begin(0x9341);
+  tft.setRotation(0);
+  tft.fillScreen(BLACK);
+  randomSeed(analogRead(0));
+  minDepth = random(1, 4);  // Generate a random minimum depth
+  maxDepth = random(minDepth, 6);  // Generate a random maximum depth greater than or equal to minDepth
+  initialLength = min(tft.width(), tft.height()) / 4;  // Initial length is a fraction of the screen size
+  int startX = tft.width() / 2;
+  int startY = tft.height() / 2;
+  drawGrowingKochSnowflake(maxDepth, startX, startY, initialLength);
+}
+
+void loop() {
+  // Randomly change the increment value and delay within the specified limits
+  int incrementChange = random(-20, 21); // Random change in the increment value
+  initialLength += incrementChange;
+
+  int delayChange = random(-20, 21); // Random change in delay
+  int newDelay = 100 + delayChange; // Ensure delay is within the limits
+
+  // Redraw the snowflake with the updated parameters
+  int startX = tft.width() / 2;
+  int startY = tft.height() / 2;
+  drawGrowingKochSnowflake(maxDepth, startX, startY, initialLength);
+  delay(newDelay);
+}
+
+void drawGrowingKochSnowflake(int depth, int x, int y, int length) {
+  int angle1 = random(360);  // Random initial angle
+  int angle2 = angle1 + 120; // Angle between line segments
+
+  for (int i = 0; i < 6; i++) {
+    // Randomize the order of drawing line segments
+    int angles[] = {angle1, angle2, angle1 + 60};
+    shuffleArray(angles, 3);
+
+    for (int j = 0; j < 3; j++) {
+      int angle = angles[j];
+      drawKochCurve(depth, x, y, length, angle);
+      x += cos(radians(angle)) * length;
+      y += sin(radians(angle)) * length;
+    }
+  }
+}
+
+void drawKochCurve(int depth, int x, int y, int length, int angle) {
+  if (depth == 0) {
+    int endX = x + cos(radians(angle)) * length;
+    int endY = y + sin(radians(angle)) * length;
+    tft.drawLine(x, y, endX, endY, randomColor());
+  } else {
+    int newX, newY;
+
+    // Calculate new points
+    newX = x + cos(radians(angle)) * length;
+    newY = y + sin(radians(angle)) * length;
+    drawKochCurve(depth - 1, x, y, length / 3, angle);
+    x = newX;
+    y = newY;
+
+    newX = x + cos(radians(angle - 60)) * length;
+    newY = y + sin(radians(angle - 60)) * length;
+    drawKochCurve(depth - 1, x, y, length / 3, angle - 60);
+    x = newX;
+    y = newY;
+
+    newX = x + cos(radians(angle + 60)) * length;
+    newY = y + sin(radians(angle + 60)) * length;
+    drawKochCurve(depth - 1, x, y, length / 3, angle + 60);
+    x = newX;
+    y = newY;
+
+    newX = x + cos(radians(angle)) * length;
+    newY = y + sin(radians(angle)) * length;
+    drawKochCurve(depth - 1, x, y, length / 3, angle);
+  }
+}
+
+void shuffleArray(int arr[], int n) {
+  for (int i = n - 1; i > 0; i--) {
+    int j = random(i + 1);
+    if (i != j) {
+      int temp = arr[i];
+      arr[i] = arr[j];
+      arr[j] = temp;
+    }
+  }
+}
+
+uint16_t randomColor() {
+  return tft.color565(random(256), random(256), random(256));
+}
