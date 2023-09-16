@@ -1,0 +1,205 @@
+#include <Adafruit_GFX.h>
+#include <Adafruit_ST7789.h>
+#include <DHT.h>
+
+#define TFT_CS            10
+#define TFT_RST           9
+#define TFT_DC            8
+#define Relay1            5
+#define Relay2            6
+#define Relay3            7
+#define WATER_VALVE_PIN   A2
+#define MOISTURE_SENSOR_PIN A1
+
+#define DHTPIN            4
+#define DHTTYPE           DHT22
+
+#define BUTTON_UP         2
+#define BUTTON_DOWN       3
+#define MOISTURE_THRESHOLD 50
+
+Adafruit_ST7789 tft = Adafruit_ST7789(TFT_CS, TFT_DC, TFT_RST);
+DHT dht(DHTPIN, DHTTYPE);
+
+bool relayStatuses[3] = {false, false, false};
+bool waterValveState = false;
+
+int currentPage = 0;
+unsigned long offTime = 3600000UL;//================================================================================ Long time max
+int desiredTemperature = 99.5;//=================================================================================== Heat Setting
+int desiredHumidity = 60;
+int desiredOnTime = 20000;
+unsigned long desiredOffTime = 3600000UL;//============================================================================= Egg turner Off time Max
+unsigned long previousTurnTime = 20000;
+bool eggTurnerActive = false;
+unsigned long eggTurnerStartTime = 0;
+
+void setup() {
+  Serial.begin(115200);
+  tft.init(240, 320);
+  dht.begin();
+  pinMode(MOISTURE_SENSOR_PIN, INPUT);
+  pinMode(BUTTON_UP, INPUT_PULLUP);
+  pinMode(BUTTON_DOWN, INPUT_PULLUP);
+  pinMode(Relay1, OUTPUT);
+  pinMode(Relay2, OUTPUT);
+  pinMode(Relay3, OUTPUT);
+  pinMode(WATER_VALVE_PIN, OUTPUT);
+  digitalWrite(Relay1, LOW);
+  digitalWrite(Relay2, LOW);
+  digitalWrite(Relay3, LOW);
+  digitalWrite(WATER_VALVE_PIN, LOW);
+
+  Serial.println("Setup complete");
+}
+
+void loop() {
+  if (digitalRead(BUTTON_UP) == LOW) {
+    currentPage = (currentPage - 1 + 2) % 2;
+    delay(300);
+  }
+
+  if (digitalRead(BUTTON_DOWN) == LOW) {
+    currentPage = (currentPage + 1) % 2;
+    delay(300);
+  }
+
+  if (currentPage == 0) {
+    float temperatureC = dht.readTemperature();
+    if (!isnan(temperatureC)) {
+      float temperatureF = (temperatureC * 9/5) + 32;
+      float humidity = dht.readHumidity();
+
+      controlRelays(temperatureC, humidity);
+      updateLCD(temperatureF, humidity);
+    }
+  } else if (currentPage == 1) {
+    updateSettingsLCD();
+  }
+
+  int moistureValue = analogRead(MOISTURE_SENSOR_PIN);
+
+  if (moistureValue > MOISTURE_THRESHOLD) {
+    waterValveState = true;
+    digitalWrite(WATER_VALVE_PIN, HIGH);
+    Serial.println("Water valve ON");
+  } else {
+    waterValveState = false;
+    digitalWrite(WATER_VALVE_PIN, LOW);
+    Serial.println("Water valve OFF");
+  }
+
+  delay(2000);
+}
+
+void controlRelays(float tempC, float hum) {
+  if ((tempC * 9/5) + 32 > desiredTemperature) {
+    digitalWrite(Relay1, HIGH);
+    relayStatuses[0] = true;
+  } else {
+    digitalWrite(Relay1, LOW);
+    relayStatuses[0] = false;
+  }
+
+  if ((tempC * 9/5) + 32 < desiredTemperature) {
+    digitalWrite(Relay2, HIGH);
+    relayStatuses[1] = true;
+  } else {
+    digitalWrite(Relay2, LOW);
+    relayStatuses[1] = false;
+  }
+
+  controlEggTurner(); // Call controlEggTurner function here
+}
+
+void controlEggTurner() {
+  unsigned long currentTime = millis();
+  unsigned long eggTurnerOnTime = 14000;//============================================================================Egg turner OFF time
+  unsigned long eggTurnerOffTime = 3600000UL;//=======================================================================Egg turner ON time
+  
+  if (eggTurnerActive) {
+    if (currentTime - eggTurnerStartTime >= eggTurnerOnTime) {
+      digitalWrite(Relay3, LOW);
+      relayStatuses[2] = false;
+      Serial.println("LOW");
+      eggTurnerActive = false;
+      eggTurnerStartTime = currentTime;
+    }
+  } else {
+    if (currentTime - eggTurnerStartTime >= eggTurnerOffTime) {
+      digitalWrite(Relay3, HIGH);
+      relayStatuses[2] = true;
+      Serial.print("HIGH");
+    
+      eggTurnerActive = true;
+      eggTurnerStartTime = currentTime;
+    }
+  }
+}
+
+void updateLCD(float temp, float hum) {
+  tft.fillScreen(ST77XX_WHITE);
+  tft.setTextColor(ST77XX_BLACK);
+  tft.setTextSize(2);
+
+  tft.setCursor(10, 20);
+  tft.print("Temperature: ");
+  tft.print(temp);
+  tft.println(" °F");
+
+  tft.setCursor(10, 60);
+  tft.print("Humidity: ");
+  tft.print(hum);
+  tft.println(" %");
+
+  tft.setCursor(10, 100);
+  tft.println("Relay Statuses:");
+  tft.setCursor(10, 120);
+  tft.print("Fan: ");
+  tft.println(relayStatuses[0] ? "ON" : "OFF");
+  tft.setCursor(10, 140);
+  tft.print("Heat: ");
+  tft.println(relayStatuses[1] ? "ON" : "OFF");
+  tft.setCursor(10, 160);
+  tft.print("Egg Turner: ");
+  tft.println(relayStatuses[2] ? "ON" : "OFF");
+  Serial.println(relayStatuses[2] ? "ON" : "OFF");
+  tft.setCursor(10, 180);
+  tft.print("Water Valve: ");
+  tft.println(waterValveState ? "ON" : "OFF");
+}
+
+void updateSettingsLCD() {
+  tft.fillScreen(ST77XX_BLACK);
+  tft.setTextColor(ST77XX_WHITE);
+  tft.setTextSize(2);
+
+  tft.setCursor(10, 20);
+  tft.print("Settings");
+
+  tft.setTextSize(2);
+
+  tft.setCursor(10, 58);
+  tft.print("Desired Temperature: ");
+  tft.print(desiredTemperature);
+  tft.println(" °F");
+
+  tft.setCursor(10, 98);
+  tft.print("Desired Humidity  :");
+  tft.print(desiredHumidity);
+  tft.println(" %");
+
+  tft.setCursor(10, 135);
+  tft.print("Egg Turner ON Time : ");
+  tft.print(desiredOnTime);
+  tft.println(" sec");
+
+  tft.setCursor(10, 190);
+  tft.print("Egg Turner OFF Time: ");
+  tft.print(desiredOffTime);
+  tft.println(" sec");
+
+  tft.setCursor(10, 240);
+  tft.print("Water Valve Status: ");
+  tft.print(waterValveState ? "ON" : "OFF");
+}
