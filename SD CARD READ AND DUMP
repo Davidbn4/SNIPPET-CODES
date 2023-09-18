@@ -1,0 +1,77 @@
+#include <SD.h>
+
+const int chipSelect = 10;
+
+void setup() {
+  // Open serial communications and wait for port to open:
+  Serial.begin(9600);
+  // Wait for Serial Monitor to connect. Needed for native USB port boards only:
+  while (!Serial);
+
+  Serial.print("Initializing SD card...");
+
+  if (!SD.begin(chipSelect)) {
+    Serial.println("Initialization failed. Things to check:");
+    Serial.println("1. Is a card inserted?");
+    Serial.println("2. Is your wiring correct?");
+    Serial.println("3. Did you change the chipSelect pin to match your shield or module?");
+    Serial.println("Note: press the reset button on the board and reopen this Serial Monitor after fixing your issue!");
+    while (true);
+  }
+
+  Serial.println("Initialization done.");
+
+  // List all files in the root directory of the SD card
+  listFiles();
+
+  // Prompt the user to enter a filename via Serial Monitor
+  Serial.println("Enter the filename (e.g., ANS001.TXT) you want to read:");
+}
+
+void loop() {
+  // Wait for user input
+  while (!Serial.available()) {
+    // Wait for user input
+  }
+
+  // Read the filename from Serial Monitor and remove newline character
+  String fileName = Serial.readStringUntil('\n');
+  fileName.trim();  // Remove leading and trailing whitespace, including newline
+
+  // Open the file with the specified filename
+  File dataFile = SD.open(fileName);
+
+  // Check if the file is available, then read and send its content over Serial
+  if (dataFile) {
+    Serial.println("File content:");
+    while (dataFile.available()) {
+      Serial.write(dataFile.read());
+    }
+    dataFile.close();
+  } else {
+    Serial.println("Error opening the specified file.");
+  }
+}
+
+void listFiles() {
+  Serial.println("Listing files:");
+
+  File root = SD.open("/");
+  if (!root) {
+    Serial.println("Error opening root directory.");
+    return;
+  }
+
+  while (true) {
+    File entry = root.openNextFile();
+    if (!entry) {
+      // No more files
+      break;
+    }
+    // Print the filename
+    Serial.print("  ");
+    Serial.println(entry.name());
+    entry.close();
+  }
+  root.close();
+}
